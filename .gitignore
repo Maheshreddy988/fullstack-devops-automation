@@ -1,0 +1,51 @@
+# ---------- Secrets (never commit) ----------
+.env
+.env.*
+!.env.example
+secrets/
+mongo-keyfile
+*.pem
+*.key
+
+# ---------- Node / React / Vite ----------
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# ---------- Terraform ----------
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+crash.log
+# keep .terraform.lock.hcl committed
+
+# ---------- Ansible ----------
+*.retry
+.vault_pass*
+vault-pass*
+
+# ---------- Kubernetes / Helm ----------
+kubeconfig
+*.kubeconfig
+k8s/**/secret.yaml
+helm/**/secrets.yaml
+
+# ---------- Jenkins (local data) ----------
+jenkins_home/
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- Editor / OS ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
