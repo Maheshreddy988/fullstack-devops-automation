@@ -1,37 +1,28 @@
 services:
-# ============================================================
-  # MongoDB Replica Set - Node 1
-  # ============================================================
-  mongo-db1:
+
+  mongodb:
     image: mongo:7
-    container_name: mongo-container-1
-    hostname: mongodb1
+    container_name: todo-mongodb
     restart: unless-stopped
     init: true
 
-    command:
-      - mongod
-      - --replSet
-      - rs0
-      - --bind_ip_all
-      - --auth
-      - --keyFile
-      - /etc/mongodb-keyfile
-    
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-      MONGO_INITDB_ROOT_DATABASE: ${MONGO_ROOT_BATABASE}
-      
+      MONGO_INITDB_DATABASE: ${MONGO_ROOT_DATABASE}
+
     volumes:
-      - mongo-data1:/data/db
-      - ./secrets/mongodb-keyfile:/etc/mongodb-keyfile:ro
-    
-    network:
+      - mongo-data:/data/db
+
+    networks:
       - mongo-network
-    
+
     healthcheck:
-      test: ["CMD","mongosh","--username","${MONGO_ROOT_USER}","--password","${MONGO_ROOT_PASSWORD}","--authorizationDatabase","admin","--eval","db.adminCommand('ping')"]
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\" | grep 1"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,109 +30,13 @@ services:
 
     security_opt:
       - no-new-privileges:true
-    
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-# ============================================================
-  # MongoDB Replica Set - Node 2
-  # ============================================================
-  mongo-db2:
-    imge: mongo:7
-    container_name: mongo-container-2
-    hostname: mongodb2
-    restart: unless-stopped
-    init: true
 
-    command:
-      - mongod
-      - --replSet
-      - rs0
-      - --bind_ip_all
-      - --auth
-      - --keyFile
-      - /etc/mongodb-keyfile
-    
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-      MONGO_INITDB_DATABASE: ${MONGO_ROOT_BATABASE}
 
-    volumes: 
-      - mongo-data2:/data/db
-      - ./secrets/mongodb-keyfile:/etc/mongodb-keyfile:ro
-
-    networks:
-      - mongo-network
-    
-    healthcheck:
-      test: ["CMD","mongosh","--username","${MONGO_ROOT_USER}","--password","${MONGO_ROOT_PASSWORD}","--authenticationDatabase","admin","--eval","db.adminCommand('ping')"]
-      intervl: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20
-    
-    deploy:
-      resource:
-        limits:
-          memory: 1G
-
-  
-# ============================================================
-  # MongoDB Replica Set - Node 3
-  # ============================================================
-  mongo-db3:
-    imge: mongo:7
-    container_name: mongo-container-3
-    hostname: mongodb2
-    restart: unless-stopped
-    init: true
-
-    command:
-      - mongod
-      - --replSet
-      - rs0
-      - --bind_ip_all
-      - --auth
-      - --keyFile
-      - /etc/mongodb-keyfile
-    
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-      MONGO_INITDB_DATABASE: ${MONGO_ROOT_BATABASE}
-
-    volumes: 
-      - mongo-data3:/data/db
-      - ./secrets/mongodb-keyfile:/etc/mongodb-keyfile:ro
-
-    networks:
-      - mongo-network
-    
-    healthcheck:
-      test: ["CMD","mongosh","--username","${MONGO_ROOT_USER}","--password","${MONGO_ROOT_PASSWORD}","--authenticationDatabase","admin","--eval","db.adminCommand('ping')"]
-      intervl: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20
-    
-    security_opt:
-      - no-new-privileges:true
-    
-    deploy:
-      resource:
-        limits:
-          memory: 1G
-
-  # ============================================================
-  # Backend
-  # ============================================================
-  
   backend:
     build:
-      context: ./backend
+      context: ../backend
       dockerfile: Dockerfile
+
     container_name: todo-backend
     restart: unless-stopped
     init: true
@@ -149,41 +44,38 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      MONGO_URL: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongo-db2:27017,mongo-db2:27017,mongo-db3:27017/${MONGO_ROOT_BATABASE}?authSource=${MONGO_ROOT_BATABASE}&replicaSet=rs0
-      
+
+      MONGO_URL: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${MONGO_ROOT_DATABASE}?authSource=admin
+
     depends_on:
-      mongo-db1:
-        condition: serice_healthy
-      mongo-db2:
-        condition: serice_healthy
-      mongo-db3:
-        condition: serice_healthy
-    
+      mongodb:
+        condition: service_healthy
+
     networks:
       - application-network
-      - mongo-db3
-    
+      - mongo-network
+
     healthcheck:
-      test: ["CMD","wget","--quiet","--spider","http://localhost:5000/helth"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--spider",
+          "http://localhost:5000/health"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
+
     security_opt:
       - no-new-privileges:true
 
-    deploy:
-      resources:
-        limits:
-          memory: 600M
-  
-  # ============================================================
-  # Frontend
-  # ============================================================
 
   frontend:
     build:
-      context: ./frontend
+      context: ../frontend
       dockerfile: Dockerfile
 
     container_name: todo-frontend
@@ -197,38 +89,58 @@ services:
     networks:
       - application-network
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--spider",
+          "http://127.0.0.1:8080/healthz"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
     security_opt:
       - no-new-privileges:true
 
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    
-  
-  # ============================================================
-  # Nginx Reverse Proxy
-  # ============================================================
+
   nginx:
-    image: nginx:1.27-alpine
+    image: nginxinc/nginx-unprivileged:1.27-alpine
     container_name: todo-nginx
     restart: unless-stopped
     init: true
 
     ports:
-      - "80:80"
+      - "80:8080"
 
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
     depends_on:
       frontend:
-        condition: service_started
+        condition: service_healthy
       backend:
         condition: service_healthy
 
     networks:
       - application-network
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--spider",
+          "http://127.0.0.1:8080/nginx-health"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
     security_opt:
       - no-new-privileges:true
@@ -236,30 +148,16 @@ services:
     read_only: true
 
     tmpfs:
-      - /var/cache/nginx
-      - /var/run
+      - /tmp
 
-    deploy:
-      resources:
-        limits:
-          memory: 128M
 
-    networks:
-
+networks:
   application-network:
     driver: bridge
 
   mongo-network:
     driver: bridge
-    internal: true
 
-  volumes:
 
-  mongo-data-1:
-    driver: local
-
-  mongo-data-2:
-    driver: local
-
-  mongo-data-3:
-    driver: local
+volumes:
+  mongo-data:
