@@ -8,7 +8,7 @@ on:
     branches: ["main"]
 
 permissions:
-  context: read
+  contents: read
 
 # uses: Runs a ready-made action written by someone else
 # run:  Runs shell commands, like typing in a terminal
