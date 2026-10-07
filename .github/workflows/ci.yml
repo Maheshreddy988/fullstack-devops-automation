@@ -16,7 +16,7 @@ permissions:
       
 jobs:
   checkout-build-and-test:
-  # take new ubuntu environment
+   # take new ubuntu environment
     runs-on: ubuntu-latest
 
     steps:
@@ -48,3 +48,103 @@ jobs:
           npm ci
           npm run build
       
+
+      - name: Build backend docker image
+        uses: docker/buil-push-action@v4
+        with: 
+          context: ./backend
+          load: true
+          tags: backend:ci
+      
+      - name: Build frontend docker image
+        uses: docker/build-push-action@v4
+        with: 
+          context: ./frontend
+          load: true
+          tags: frontend:ci
+
+      - name: Trivy Scan Bakend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: backend:ci
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+     
+      
+      - name: Trivy Scan Frontend image 
+        uses: aquasecurity/trivy-action@0.28.0
+        with: 
+         image-ref: frontend:ci
+         security: CRITICAL,HIGH
+         exit-code: "0"
+
+  
+  security-scan-with-sonar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions@checkout@v4
+        with:
+          fetch-depth: 0
+        
+      - name: Trivy Scan (dependencies, secrets, config)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"   
+
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@v5 
+        env:
+          SONAR_TOKEN: ${{secrets.SONAR_TOKEN}}
+  
+      
+
+  push-to-ghcr:
+    needs: [checkout-build-and-test,security-scan-with-sonar]
+    if: github.ref == 'ref/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout Code
+        uses: actions@checkout@v4
+
+      - name: Lowercase owener name
+        runs: echo "OWENER=${GITHUB_REPOSITORY_OWNER,,}" >>$GITHUB_ENV
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+      
+      - name: Push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/fullstack-backend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/fullstack-backend:latest
+
+      - name: Push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/fullstack-frontend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/fullstack-frontend:latest
+
+  
+      
+         
+    
