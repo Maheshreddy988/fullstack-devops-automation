@@ -2,7 +2,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: ["dev" ,"main"]
+    branches: ["dev", "main"]
 
   pull_request:
     branches: ["main"]
@@ -10,22 +10,24 @@ on:
 permissions:
   contents: read
 
-# uses: Runs a ready-made action written by someone else
-# run:  Runs shell commands, like typing in a terminal
-# with: Gives inputs (settings) to that action
-      
+# Cancel older runs of the same branch when a new commit is pushed
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# uses: runs a ready-made action written by someone else
+# run:  runs shell commands, like typing in a terminal
+# with: gives inputs (settings) to that action
+
 jobs:
   checkout-build-and-test:
-   # take new ubuntu environment
     runs-on: ubuntu-latest
 
     steps:
-       # pull the source code
       - name: Checkout Source Code
         uses: actions/checkout@v4
-      
-      # install the noe environ ment
-      - name: Setup The Node Environment
+
+      - name: Setup Node Environment
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -33,60 +35,56 @@ jobs:
           cache-dependency-path: |
             backend/package-lock.json
             frontend/package-lock.json
-  
-      
-      # install Dependences in backend and frontnd
 
-      - name: Backend install Dependences
+      - name: Backend install dependencies
         working-directory: backend
-        run: |
-          npm ci
+        run: npm ci
 
-      - name: frontend install Dependences And Build Source
+      - name: Frontend install dependencies and build
         working-directory: frontend
         run: |
           npm ci
           npm run build
-      
 
       - name: Build backend docker image
-        uses: docker/build-push-action@v4
-        with: 
+        uses: docker/build-push-action@v6
+        with:
           context: ./backend
           load: true
           tags: backend:ci
-      
+
       - name: Build frontend docker image
-        uses: docker/build-push-action@v4
-        with: 
+        uses: docker/build-push-action@v6
+        with:
           context: ./frontend
           load: true
           tags: frontend:ci
 
-      - name: Trivy Scan Bakend image
+      - name: Trivy Scan Backend image
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: backend:ci
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
           exit-code: "0"
-     
-      
-      - name: Trivy Scan Frontend image 
-        uses: aquasecurity/trivy-action@0.35.0
-        with:  
-         image-ref: frontend:ci
-         severity: CRITICAL,HIGH
-         exit-code: "0"
 
-  
+      - name: Trivy Scan Frontend image
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: frontend:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+
   security-scan-with-sonar:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-        
+
       - name: Trivy Scan (dependencies, secrets, config)
         uses: aquasecurity/trivy-action@0.35.0
         with:
@@ -95,37 +93,46 @@ jobs:
           scanners: vuln,secret,misconfig
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "0"   
+          exit-code: "0"
+
+      # TEMPORARY: remove this step once the Sonar scan works.
+      # Prints {"valid":true} if the token is accepted.
+      - name: Validate Sonar token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: curl -s -u "$SONAR_TOKEN:" https://sonarcloud.io/api/authentication/validate
 
       - name: SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@v5 
+        uses: SonarSource/sonarqube-scan-action@v5
         env:
-          SONAR_TOKEN: ${{secrets.SONAR_TOKEN}}
-  
-      
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   push-to-ghcr:
-    needs: [checkout-build-and-test,security-scan-with-sonar]
-    if: github.ref == 'ref/heads/dev' && github.event_name == 'push'
+    needs: [checkout-build-and-test, security-scan-with-sonar]
+    # Only push on direct pushes to dev or main (never on pull requests)
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Lowercase owener name
-        run: echo "OWENER=${GITHUB_REPOSITORY_OWNER,,}" >>$GITHUB_ENV
+      - name: Lowercase owner name
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{github.actor}}
-          password: ${{secrets.GITHUB_TOKEN}}
-      
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags: commit SHA, plus the branch name (dev or main)
       - name: Push backend image
         uses: docker/build-push-action@v6
         with:
@@ -133,7 +140,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ env.OWNER }}/fullstack-backend:${{ github.sha }}
-            ghcr.io/${{ env.OWNER }}/fullstack-backend:latest
+            ghcr.io/${{ env.OWNER }}/fullstack-backend:${{ github.ref_name }}
 
       - name: Push frontend image
         uses: docker/build-push-action@v6
@@ -142,9 +149,4 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ env.OWNER }}/fullstack-frontend:${{ github.sha }}
-            ghcr.io/${{ env.OWNER }}/fullstack-frontend:latest
-
-  
-      
-         
-    
+            ghcr.io/${{ env.OWNER }}/fullstack-frontend:${{ github.ref_name }}
