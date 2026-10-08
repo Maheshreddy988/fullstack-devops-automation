@@ -75,7 +75,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.35.0
         with:  
          image-ref: frontend:ci
-         security: CRITICAL,HIGH
+         severity: CRITICAL,HIGH
          exit-code: "0"
 
   
@@ -106,7 +106,7 @@ jobs:
 
   push-to-ghcr:
     needs: [checkout-build-and-test,security-scan-with-sonar]
-    if: github.ref == 'ref/heads/main' && github.event_name == 'push'
+    if: github.ref == 'ref/heads/dev' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -132,8 +132,8 @@ jobs:
           context: ./backend
           push: true
           tags: |
-            ghcr.io/${{ env.OWNER }}/fullstack-backend:${{ github.sha }}
-            ghcr.io/${{ env.OWNER }}/fullstack-backend:latest
+            ghcr.io/${{ GITHUB_ENV}}/fullstack-backend:${{ github.sha }}
+            ghcr.io/${{ GITHUB_ENV }}/fullstack-backend:latest
 
       - name: Push frontend image
         uses: docker/build-push-action@v6
@@ -141,8 +141,8 @@ jobs:
           context: ./frontend
           push: true
           tags: |
-            ghcr.io/${{ env.OWNER }}/fullstack-frontend:${{ github.sha }}
-            ghcr.io/${{ env.OWNER }}/fullstack-frontend:latest
+            ghcr.io/${{ GITHUB_ENV }}/fullstack-frontend:${{ github.sha }}
+            ghcr.io/${{ GITHUB_ENV}}/fullstack-frontend:latest
 
   
       
