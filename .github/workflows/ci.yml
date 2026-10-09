@@ -102,9 +102,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-  
-      
-
+       
   push-to-ghcr:
     needs: [checkout-build-and-test,security-scan-with-sonar]
     if: github.ref == 'ref/heads/dev' && github.event_name == 'push'
