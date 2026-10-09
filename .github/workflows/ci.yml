@@ -96,7 +96,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "0"   
-
+ 
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@v5 
         env:
