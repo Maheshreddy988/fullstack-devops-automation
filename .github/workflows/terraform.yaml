@@ -108,3 +108,4 @@ jobs:
         run: |
           IP=$(terraform output -raw ec2_public_ip)
           gh secret set EC2_HOST --body "$IP" --repo ${{ github.repository }}
+          
