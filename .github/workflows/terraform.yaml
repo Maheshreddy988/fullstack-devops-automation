@@ -1,12 +1,6 @@
-
 name: Terraform Infrastructure
 
 on:
-  pull_request:
-    paths:
-      - "terraform/**"
-      - ".github/workflows/terraform.yml"
-
   workflow_dispatch:
     inputs:
       action:
@@ -19,7 +13,7 @@ on:
         default: plan
 
 permissions:
-  contents: read   # repository code just for read option
+  contents: read
   id-token: write
 
 env:
@@ -42,7 +36,6 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Configure AWS credentials
-        if: github.event_name == 'workflow_dispatch'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
@@ -57,17 +50,15 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        if: github.event_name == 'pull_request' || inputs.action == 'plan'
+        if: inputs.action == 'plan'
         working-directory: terraform
         run: terraform plan -input=false -no-color
 
   apply:
     name: Apply Infrastructure
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+    if: inputs.action == 'apply'
     needs: validate
     runs-on: ubuntu-latest
-
-    # Configure required reviewers for this environment in GitHub settings.
     environment: terraform-production
 
     steps:
@@ -87,10 +78,6 @@ jobs:
         working-directory: terraform
         run: terraform init -input=false
 
-      - name: Terraform Validate
-        working-directory: terraform
-        run: terraform validate
-
       - name: Terraform Plan
         working-directory: terraform
         run: terraform plan -input=false -out=tfplan
@@ -103,8 +90,8 @@ jobs:
         working-directory: terraform
         run: |
           IP=$(terraform output -raw ec2_public_ip)
-          echo "EC2 IP : $IP"
-          echo "EC2 IP:$IP" >> $GITHUB_STEP_SUMMARY
+          echo "EC2 IP: $IP"
+          echo "EC2 IP: $IP" >> $GITHUB_STEP_SUMMARY
 
       - name: Save EC2 IP to GitHub
         working-directory: terraform
