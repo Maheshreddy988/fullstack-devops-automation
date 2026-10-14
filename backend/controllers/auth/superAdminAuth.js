@@ -1,7 +1,7 @@
 const User = require("../../model/User")
 const bcrypt = require('bcrypt');
 var jwt = require('jsonwebtoken');
-const secret = "exceleed-meterial-tracking";
+const secret = process.env.JWT_SECRET;
 const sendVerificationCode = require("../../helpers/sendVerificationCode")
 
 // userCreation route
@@ -86,28 +86,49 @@ const userLogin = async (req, res) => {
         console.log("req.body", req.body);
 
 
-        // Step 1: Find user by email (case-insensitive)
+         // Step 1: Validate request body
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Email and password are required"
+            });
+        }
+        // Step 2: Find user by email (case-insensitive)
         const user = await User.findOne({
             email: { $regex: new RegExp(`^${email}$`, "i") }
         });
 
-        console.log("existingUser", user);
+        
+        // Step 3: Check whether user exists
+        if (!user) {
+            return res.status(401).json({
+                message: "Invalid email or password"
+            });
+        }
 
-        // step 2 : checking the User wether itis verified or not
+   
+        // Enable this check if your schema has an isVerified field.
+        if (user.isVerified === false) {
+            return res.status(403).json({
+                message: "Please verify your email before logging in"
+            });
+        }
        
 
-        const passwordmatch = bcrypt.compare(password, user.password);
+        const passwordmatch = await bcrypt.compare(password, user.password);
     
 
         if (!passwordmatch) {
-            return res.status(400).json({ message: "wrong password" })
+            return res.status(400).json({ message: "Invalid email or password" })
         }
 
-        const token = jwt.sign({
-            _id: user._id
-        }, secret, { expiresIn: "1h" })
 
-        console.log("jwt token", token);
+if (!secret) {
+    throw new Error("JWT_SECRET environment variable is missing");
+}
+
+        const token = jwt.sign({
+            _id: user._id.toString()
+        }, secret, { expiresIn: "1h" })
 
 
         return res.status(200).json({
