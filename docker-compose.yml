@@ -80,7 +80,7 @@ services:
 
     container_name: todo-frontend
     restart: unless-stopped
-    init: true
+    init: true    # stop zombie process inside container
 
     depends_on:
       backend:

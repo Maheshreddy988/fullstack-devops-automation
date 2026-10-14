@@ -1,0 +1,115 @@
+
+name: Terraform Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform operation"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+        default: plan
+
+permissions:
+  contents: read   # repository code just for read option
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  validate:
+    name: Format, Validate and Plan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Format
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Configure AWS credentials
+        if: github.event_name == 'workflow_dispatch'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        if: github.event_name == 'pull_request' || inputs.action == 'plan'
+        working-directory: terraform
+        run: terraform plan -input=false -no-color
+
+  apply:
+    name: Apply Infrastructure
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+    needs: validate
+    runs-on: ubuntu-latest
+
+    # Configure required reviewers for this environment in GitHub settings.
+    environment: terraform-production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Show EC2 IP
+        working-directory: terraform
+        run: |
+          IP=$(terraform output -raw ec2_public_ip)
+          echo "EC2 IP : $IP"
+          echo "EC2 IP:$IP" >> $GITHUB_STEP_SUMMARY
+
+      - name: Save EC2 IP to GitHub
+        working-directory: terraform
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          IP=$(terraform output -raw ec2_public_ip)
+          gh secret set EC2_HOST --body "$IP" --repo ${{ github.repository }}

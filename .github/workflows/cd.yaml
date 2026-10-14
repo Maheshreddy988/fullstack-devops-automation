@@ -1,0 +1,44 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]   # must match "name:" in your CI file
+    types: [completed]
+    branches: [main]             # only runs coming from main
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy-to-ec2:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Lowercase owner name
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Deploy on EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          OWNER: ${{ env.OWNER }}
+          GH_USER: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: OWNER,GH_USER,GH_TOKEN
+          script: |
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
+
+            docker pull ghcr.io/$OWNER/fullstack-backend:latest
+            docker pull ghcr.io/$OWNER/fullstack-frontend:latest
+
+            docker rm -f backend frontend || true
+
+            docker run -d --name backend  -p 5000:5000 --restart unless-stopped ghcr.io/$OWNER/fullstack-backend:latest
+            docker run -d --name frontend -p 80:80     --restart unless-stopped ghcr.io/$OWNER/fullstack-frontend:latest

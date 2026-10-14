@@ -49,3 +49,16 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ---------- Terraform ----------
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+*.tfvars
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
