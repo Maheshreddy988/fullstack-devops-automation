@@ -16,7 +16,7 @@ output "security_group_id" {
 
 output "ec2_instance_id" {
   description = "ID of the EC2 instance"
-  value       = aws_instance.fullstack-devops-automation
+  value       = aws_instance.fullstack-devops-automation.id
 }
 
 output "ec2_public_ip" {
