@@ -35,12 +35,40 @@ resource "aws_instance" "fullstack-devops-automation" {
     delete_on_termination = true
   }
 
-  user_data = <<-EOF
-    #!/bin/bash
-    set -eux
-    dnf install -y docker
-    systemctl enable --now docker
-  EOF
+  user_data = <<-USERDATA
+  #!/bin/bash
+  set -eux
+  export DEBIAN_FRONTEND=noninteractive
+
+  # Prerequisites
+  apt-get update -y
+  apt-get install -y ca-certificates curl
+
+  # Docker's official GPG key
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+
+  # Docker apt repository
+  . /etc/os-release
+  CODENAME="$${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+  ARCH="$(dpkg --print-architecture)"
+  tee /etc/apt/sources.list.d/docker.sources <<REPO
+  Types: deb
+  URIs: https://download.docker.com/linux/ubuntu
+  Suites: $CODENAME
+  Components: stable
+  Architectures: $ARCH
+  Signed-By: /etc/apt/keyrings/docker.asc
+  REPO
+
+  # Install Docker
+  apt-get update -y
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  systemctl enable --now docker
+  usermod -aG docker ubuntu
+USERDATA
 
   user_data_replace_on_change = true
 
