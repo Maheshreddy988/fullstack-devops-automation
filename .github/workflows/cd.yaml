@@ -54,8 +54,9 @@ jobs:
             docker rm -f backend frontend || true
 
             docker run -d --name backend --network appnet --restart unless-stopped \
-              -e MONGO_URI="mongodb://$MONGO_USER:$MONGO_PASSWORD@mongo:27017/appdb?authSource=admin" \
+              --env-file /home/ubuntu/AllEnv/.env.server \
               ghcr.io/$OWNER/fullstack-backend:latest
 
             docker run -d --name frontend --network appnet -p 80:80 --restart unless-stopped \
+             --env-file /home/ubuntu/AllEnv/.env.server \
               ghcr.io/$OWNER/fullstack-frontend:latest
