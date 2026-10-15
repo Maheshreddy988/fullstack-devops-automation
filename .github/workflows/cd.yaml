@@ -2,9 +2,9 @@ name: CD Pipeline
 
 on:
   workflow_run:
-    workflows: ["CI Pipeline"]   # must match "name:" in your CI file
+    workflows: ["CI Pipeline"]
     types: [completed]
-    branches: [main]             # only runs coming from main
+    branches: [main]
 
 permissions:
   contents: read
@@ -27,19 +27,35 @@ jobs:
           OWNER: ${{ env.OWNER }}
           GH_USER: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MONGO_USER: ${{ secrets.MONGO_USER }}
+          MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: OWNER,GH_USER,GH_TOKEN
+          envs: OWNER,GH_USER,GH_TOKEN,MONGO_USER,MONGO_PASSWORD
           script: |
             echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
 
             docker pull ghcr.io/$OWNER/fullstack-backend:latest
             docker pull ghcr.io/$OWNER/fullstack-frontend:latest
 
+            # private network so containers can reach each other by name
+            docker network inspect appnet >/dev/null 2>&1 || docker network create appnet
+
+            # start Mongo only if it doesn't exist yet (keeps data between deploys)
+            docker inspect mongo >/dev/null 2>&1 || docker run -d --name mongo \
+              --network appnet --restart unless-stopped \
+              -e MONGO_INITDB_ROOT_USERNAME="$MONGO_USER" \
+              -e MONGO_INITDB_ROOT_PASSWORD="$MONGO_PASSWORD" \
+              -v mongo_data:/data/db \
+              mongo:7
+
             docker rm -f backend frontend || true
 
-            docker run -d --name backend  -p 5000:5000 --restart unless-stopped ghcr.io/$OWNER/fullstack-backend:latest
-            docker run -d --name frontend -p 80:80     --restart unless-stopped ghcr.io/$OWNER/fullstack-frontend:latest
-            
+            docker run -d --name backend --network appnet --restart unless-stopped \
+              -e MONGO_URI="mongodb://$MONGO_USER:$MONGO_PASSWORD@mongo:27017/appdb?authSource=admin" \
+              ghcr.io/$OWNER/fullstack-backend:latest
+
+            docker run -d --name frontend --network appnet -p 80:80 --restart unless-stopped \
+              ghcr.io/$OWNER/fullstack-frontend:latest
