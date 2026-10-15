@@ -10,8 +10,12 @@ on:
         options:
           - plan
           - apply
+          - destroy
         default: plan
-
+      confirm_destroy:
+        description: "Type 'destroy' to confirm (only needed for destroy)"
+        required: false
+        type: string
 permissions:
   contents: read
   id-token: write
@@ -108,4 +112,37 @@ jobs:
         run: |
           IP=$(terraform output -raw ec2_public_ip)
           gh secret set EC2_HOST --body "$IP" --repo ${{ github.repository }}
-          
+
+
+  destroy:
+    name: Destroy Infrastructure
+    if: inputs.action == 'destroy' && inputs.confirm_destroy == 'destroy'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: terraform-production   # approval gate before destroying
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -input=false
+
+      - name: Terraform Destroy
+        working-directory: terraform
+        run: terraform destroy -input=false -auto-approve
+
+      - name: Remove stale EC2_HOST secret
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: gh secret delete EC2_HOST --repo ${{ github.repository }} || true        
